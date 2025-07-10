@@ -2,39 +2,21 @@
 @tailwind components;
 @tailwind utilities;
 
-@layer base {
-  html {
-    font-family: system-ui, sans-serif;
-  }
-  body {
-    @apply min-h-screen bg-slate-50 dark:bg-gray-900 transition-colors duration-500;
-    background: linear-gradient(120deg, #f8fafc 0%, #e0e7ff 100%);
-    background-size: 400% 400%;
-    animation: gradientBG 16s ease infinite;
-  }
-  .dark body {
-    background: linear-gradient(120deg, #1e293b 0%, #334155 100%);
-    background-size: 400% 400%;
-    animation: gradientBG 16s ease infinite;
-  }
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+/* Base styles without @apply */
+* {
+  border-color: rgb(229 231 235);
 }
 
-@keyframes gradientBG {
-  0% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
-  100% { background-position: 0% 50%; }
+body {
+  background-color: rgb(248 250 252);
+  color: rgb(15 23 42);
+  font-family: 'Inter', system-ui, sans-serif;
 }
 
-@layer components {
-  .btn-primary {
-    @apply px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 shadow-md dark:bg-blue-500 dark:hover:bg-blue-700 dark:focus:ring-blue-400 transition-all;
-  }
-  .btn-secondary {
-    @apply px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 shadow-md dark:bg-gray-700 dark:hover:bg-gray-900 dark:focus:ring-gray-400 transition-all;
-  }
-  .card {
-    @apply bg-white/80 dark:bg-gray-800/80 rounded-2xl shadow-xl border border-gray-200 dark:border-gray-700 transition-all hover:shadow-2xl;
-  }
+html {
+  scroll-behavior: smooth;
 }
 
 /* Custom scrollbar */
@@ -44,33 +26,31 @@
 }
 
 ::-webkit-scrollbar-track {
-  background: #f1f1f1;
-  border-radius: 4px;
+  background-color: rgb(243 244 246);
+  border-radius: 9999px;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #c1c1c1;
-  border-radius: 4px;
+  background: linear-gradient(to bottom, rgb(59 130 246), rgb(99 102 241));
+  border-radius: 9999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #a8a8a8;
+  background: linear-gradient(to bottom, rgb(37 99 235), rgb(79 70 229));
 }
 
-/* Loading animation */
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
+/* Loading animations */
+@keyframes shimmer {
+  0% {
+    background-position: -200px 0;
+  }
+  100% {
+    background-position: calc(200px + 100%) 0;
   }
 }
 
-.animate-spin {
-  animation: spin 1s linear infinite;
-}
-
-/* Smooth transitions */
-* {
-  transition-property: color, background-color, border-color, text-decoration-color, fill, stroke;
-  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
-  transition-duration: 150ms;
+.skeleton {
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200px 100%;
+  animation: shimmer 1.5s infinite;
 }
