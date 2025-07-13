@@ -9,8 +9,10 @@ export interface DataRow {
   export interface ColumnConfig {
     key: string;
     label: string;
-    type: 'number' | 'string';
+    type: 'number' | 'string' | 'boolean';
     filterable: boolean;
+    width?: number;
+    render?: (value: string | number, row: DataRow) => React.ReactNode;
   }
   
   export interface PaginationState {

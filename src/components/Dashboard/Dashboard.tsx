@@ -1,13 +1,14 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { FilterDropdown } from '@/components/Filters/FilterDropdown';
+import { UltraFastFilterDropdown } from '@/components/Filters/UltraFastFilterDropdown';
 import { DataTable } from '@/components/DataTable/DataTable';
-import { useFilterContext } from '@/context/FilterContext';
+import { LoadingProgress } from '@/components/Dashboard/LoadingProgress';
+import { useUltraFastFilter } from '@/context/UltraFastFilterContext';
 import { getColumnConfigs } from '@/utils/dataProcessing';
 import { generateMockData } from '@/utils/csvParser';
 
-// Simple, reliable SVG icons
+// Minimal SVG icons
 const DashboardIcon = ({ className }: { className?: string }) => (
   <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
@@ -32,30 +33,6 @@ const RefreshIcon = ({ className }: { className?: string }) => (
   </svg>
 );
 
-const CloseIcon = ({ className }: { className?: string }) => (
-  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-  </svg>
-);
-
-const DatabaseIcon = ({ className }: { className?: string }) => (
-  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />
-  </svg>
-);
-
-const TrendingUpIcon = ({ className }: { className?: string }) => (
-  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
-  </svg>
-);
-
-const UsersIcon = ({ className }: { className?: string }) => (
-  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a4 4 0 11-8 0 4 4 0 018 0z" />
-  </svg>
-);
-
 const SettingsIcon = ({ className }: { className?: string }) => (
   <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
@@ -64,35 +41,36 @@ const SettingsIcon = ({ className }: { className?: string }) => (
 );
 
 export const Dashboard: React.FC = () => {
-  const { state, dispatch } = useFilterContext();
-  const { data, filteredData, loading, error, filters } = state;
+  const { state, dispatch } = useUltraFastFilter();
+  const { data, filteredData, isLoading, filters, error } = state;
   const [enableVirtualScroll, setEnableVirtualScroll] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [datasetSize, setDatasetSize] = useState<'small' | 'medium' | 'large'>('small');
+  const [useChunkedDisplay, setUseChunkedDisplay] = useState(false);
+  const [loadingProgress, setLoadingProgress] = useState(0);
+  const [loadingMessage, setLoadingMessage] = useState('');
+  const [estimatedTime, setEstimatedTime] = useState<number | undefined>();
 
-  // Calculate derived values
-  const hasActiveFilters = Object.values(filters).some(values => values.length > 0);
-  const activeFilterCount = Object.values(filters).filter(f => f.length > 0).length;
-  const filterEfficiency = data.length > 0 ? Math.round((filteredData.length / data.length) * 100) : 0;
+  // Calculate metrics
+  const hasActiveFilters = Object.values(filters).some((values: string[]) => values.length > 0);
+  const activeFilterCount = Object.values(filters).filter((f: string[]) => f.length > 0).length;
+  const currentDataLength = data.length;
+  const currentFilteredLength = filteredData.length;
+  const filterEfficiency = currentDataLength > 0 ? Math.round((currentFilteredLength / currentDataLength) * 100) : 0;
 
   // Load initial data
   useEffect(() => {
     const loadData = async () => {
       dispatch({ type: 'SET_LOADING', payload: true });
-      
       try {
-        const mockData = generateMockData(1000);
+        const mockData = await generateMockData(1000);
         dispatch({ type: 'SET_DATA', payload: mockData });
       } catch (err) {
-        dispatch({ 
-          type: 'SET_ERROR', 
-          payload: err instanceof Error ? err.message : 'Failed to load data' 
-        });
+        console.error('Failed to load data:', err);
       } finally {
         dispatch({ type: 'SET_LOADING', payload: false });
       }
     };
-
     loadData();
   }, [dispatch]);
 
@@ -103,25 +81,87 @@ export const Dashboard: React.FC = () => {
     dispatch({ type: 'CLEAR_ALL_FILTERS' });
   };
 
-  const handleLoadDataset = (size: 'small' | 'medium' | 'large') => {
+  const handleLoadDataset = async (size: 'small' | 'medium' | 'large') => {
     dispatch({ type: 'SET_LOADING', payload: true });
     setDatasetSize(size);
+    setLoadingProgress(0);
+    setLoadingMessage('Initializing data generation...');
+    setEstimatedTime(undefined);
     
-    const sizes = {
-      small: 1000,
-      medium: 10000,
-      large: 50000
-    };
+    const sizes = { small: 10000, medium: 100000, large: 500000 };
+    const targetSize = sizes[size];
     
-    setTimeout(() => {
-      const newData = generateMockData(sizes[size]);
-      dispatch({ type: 'SET_DATA', payload: newData });
-      dispatch({ type: 'SET_LOADING', payload: false });
-      
+    // Always use standard DataTable with horizontal scrolling for all dataset sizes
+    setUseChunkedDisplay(false);
+    
+    try {
+      // For large datasets, show progress
       if (size === 'large') {
-        setEnableVirtualScroll(true);
+        setEstimatedTime(8); // Estimate 8 seconds for large dataset
+        
+        // Simulate progress updates with more realistic progression
+        const startTime = Date.now();
+        const progressInterval = setInterval(() => {
+          const elapsed = (Date.now() - startTime) / 1000; // seconds
+          const estimatedTotal = 8; // 8 seconds total
+          const baseProgress = Math.min((elapsed / estimatedTotal) * 100, 95);
+          
+          // Add some realistic variation
+          const variation = Math.sin(elapsed * 2) * 5; // ±5% variation
+          const newProgress = Math.max(0, Math.min(baseProgress + variation, 95));
+          
+          setLoadingProgress(newProgress);
+          
+          // Update estimated time remaining
+          const remaining = Math.max(0, estimatedTotal - elapsed);
+          setEstimatedTime(Math.round(remaining));
+          
+          // Update messages based on progress
+          if (newProgress < 25) {
+            setLoadingMessage('Initializing data generation engine...');
+          } else if (newProgress < 45) {
+            setLoadingMessage('Generating 500,000 data records...');
+          } else if (newProgress < 65) {
+            setLoadingMessage('Processing data structures and indexes...');
+          } else if (newProgress < 85) {
+            setLoadingMessage('Optimizing for ultra-fast filtering...');
+          } else {
+            setLoadingMessage('Finalizing dataset and preparing display...');
+          }
+        }, 100);
+        
+        // Generate data
+        const newData = await generateMockData(targetSize);
+        
+        // Clear interval and set to 100%
+        clearInterval(progressInterval);
+        setLoadingProgress(100);
+        setLoadingMessage('Dataset loaded successfully!');
+        
+        // Small delay to show completion
+        setTimeout(() => {
+          dispatch({ type: 'SET_DATA', payload: newData });
+          dispatch({ type: 'SET_LOADING', payload: false });
+          setLoadingProgress(0);
+          setLoadingMessage('');
+          setEstimatedTime(undefined);
+        }, 500);
+      } else {
+        // For small and medium datasets, show simple loading
+        setLoadingMessage(`Loading ${size} dataset...`);
+        const newData = await generateMockData(targetSize);
+        dispatch({ type: 'SET_DATA', payload: newData });
+        dispatch({ type: 'SET_LOADING', payload: false });
+        setLoadingProgress(0);
+        setLoadingMessage('');
       }
-    }, 100);
+    } catch (err) {
+      console.error('Failed to load dataset:', err);
+      dispatch({ type: 'SET_LOADING', payload: false });
+      setLoadingProgress(0);
+      setLoadingMessage('');
+      setEstimatedTime(undefined);
+    }
   };
 
   const exportData = () => {
@@ -141,26 +181,28 @@ export const Dashboard: React.FC = () => {
     window.URL.revokeObjectURL(url);
   };
 
-  if (loading) {
+  if (isLoading) {
+    // Show progress bar for large datasets
+    if (datasetSize === 'large' && loadingProgress > 0) {
+      return (
+        <LoadingProgress
+          progress={loadingProgress}
+          message={loadingMessage}
+          estimatedTime={estimatedTime}
+        />
+      );
+    }
+    
+    // Show simple loading for other cases
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 flex items-center justify-center">
-        <div className="bg-white/80 backdrop-blur-xl border border-white/20 shadow-2xl rounded-3xl p-12 max-w-md mx-auto animate-fade-in">
-          <div className="relative mb-8">
-            <div className="w-20 h-20 mx-auto">
-              <div className="absolute inset-0 rounded-full bg-gradient-to-r from-blue-500 to-indigo-600 animate-spin"></div>
-              <div className="absolute inset-2 rounded-full bg-white flex items-center justify-center">
-                <DashboardIcon className="h-8 w-8 text-blue-600" />
-              </div>
-            </div>
-          </div>
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="bg-white border border-gray-200 rounded-lg p-8 max-w-md mx-auto">
           <div className="text-center">
-            <h3 className="text-2xl font-bold text-gray-900 mb-2">Loading Dashboard</h3>
-            <p className="text-gray-600">Preparing your business intelligence platform...</p>
-            <div className="mt-4 flex justify-center space-x-1">
-              <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"></div>
-              <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
-              <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+            <div className="w-8 h-8 mx-auto mb-4 animate-spin">
+              <DashboardIcon className="h-8 w-8 text-blue-600" />
             </div>
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Loading Dashboard</h3>
+            <p className="text-gray-600">{loadingMessage || 'Please wait while we prepare your data...'}</p>
           </div>
         </div>
       </div>
@@ -169,20 +211,17 @@ export const Dashboard: React.FC = () => {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-red-50 via-orange-50 to-yellow-50 flex items-center justify-center">
-        <div className="bg-white/80 backdrop-blur-xl border border-red-200/50 shadow-2xl rounded-3xl p-12 max-w-md mx-auto animate-fade-in">
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="bg-white border border-red-200 rounded-lg p-8 max-w-md mx-auto">
           <div className="text-center">
-            <div className="w-20 h-20 mx-auto mb-6 bg-gradient-to-br from-red-500 to-orange-500 rounded-full flex items-center justify-center">
-              <CloseIcon className="h-10 w-10 text-white" />
-            </div>
-            <h3 className="text-2xl font-bold text-gray-900 mb-2">System Error</h3>
-            <p className="text-gray-600 mb-6">{error}</p>
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Error</h3>
+            <p className="text-gray-600 mb-4">{error}</p>
             <button
-              onClick={() => window.location.reload()}
-              className="inline-flex items-center justify-center px-6 py-3 text-sm font-semibold text-white bg-gradient-to-r from-blue-600 to-indigo-600 rounded-xl shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-200"
+              onClick={() => dispatch({ type: 'CLEAR_ALL_FILTERS' })}
+              className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700"
             >
               <RefreshIcon className="h-4 w-4 mr-2" />
-              Retry Loading
+              Clear All Filters
             </button>
           </div>
         </div>
@@ -191,40 +230,34 @@ export const Dashboard: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100">
-      {/* Professional Header */}
-      <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-xl border border-white/20 shadow-2xl border-b border-white/20">
-        <div className="max-w-7xl mx-auto px-6 lg:px-8">
-          <div className="flex items-center justify-between h-20">
-            {/* Brand Section */}
-            <div className="flex items-center space-x-4">
-              <div className="relative">
-                <div className="w-12 h-12 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-2xl flex items-center justify-center shadow-lg">
-                  <DashboardIcon className="h-6 w-6 text-white" />
-                </div>
+    <div className="min-h-screen bg-gray-50">
+      {/* Header */}
+      <header className="bg-white border-b border-gray-200">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between py-4 sm:py-0 sm:h-16 space-y-4 sm:space-y-0">
+            {/* Brand */}
+            <div className="flex items-center">
+              <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center mr-3">
+                <DashboardIcon className="h-5 w-5 text-white" />
               </div>
               <div>
-                <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-600 via-purple-600 to-indigo-600 bg-clip-text text-transparent">
-                  Business Intelligence
-                </h1>
-                <p className="text-sm text-gray-600 font-medium">
-                  Advanced Analytics Dashboard
-                </p>
+                <h1 className="text-lg sm:text-xl font-semibold text-gray-900">Business Intelligence</h1>
+                <p className="text-xs sm:text-sm text-gray-500">Analytics Dashboard</p>
               </div>
             </div>
             
-            {/* Action Controls */}
-            <div className="flex items-center space-x-4">
+            {/* Controls */}
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center space-y-3 sm:space-y-0 sm:space-x-4">
               {/* Dataset Selector */}
-              <div className="hidden md:flex items-center space-x-2 bg-white/80 backdrop-blur-sm rounded-xl p-1 shadow-lg border border-white/20">
+              <div className="flex border border-gray-300 rounded-md">
                 {(['small', 'medium', 'large'] as const).map((size) => (
                   <button
                     key={size}
                     onClick={() => handleLoadDataset(size)}
-                    className={`px-4 py-2 text-sm font-semibold rounded-lg transition-all duration-200 ${
+                    className={`flex-1 sm:flex-none px-2 sm:px-3 py-2 text-xs sm:text-sm font-medium first:rounded-l-md last:rounded-r-md ${
                       datasetSize === size
-                        ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg'
-                        : 'text-gray-600 hover:text-gray-900 hover:bg-white/50'
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-white text-gray-700 hover:bg-gray-50'
                     }`}
                   >
                     {size.charAt(0).toUpperCase() + size.slice(1)}
@@ -232,292 +265,213 @@ export const Dashboard: React.FC = () => {
                 ))}
               </div>
 
-              {/* Export Button */}
-              <button
-                onClick={exportData}
-                className="inline-flex items-center justify-center px-6 py-3 text-sm font-semibold text-white bg-gradient-to-r from-blue-600 to-indigo-600 rounded-xl shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-200 group"
-                disabled={filteredData.length === 0}
-              >
-                <DownloadIcon className="h-4 w-4 mr-2 group-hover:animate-bounce" />
-                Export Data
-              </button>
-
-              {/* Clear Filters */}
-              {hasActiveFilters && (
+              {/* Action Buttons */}
+              <div className="flex space-x-2 sm:space-x-4">
+                {/* Export */}
                 <button
-                  onClick={handleClearAllFilters}
-                  className="inline-flex items-center justify-center px-6 py-3 text-sm font-semibold text-red-600 bg-white border border-red-200 rounded-xl shadow-sm hover:shadow-md transform hover:scale-105 transition-all duration-200 hover:bg-red-50"
+                  onClick={exportData}
+                  disabled={filteredData.length === 0}
+                  className="flex-1 sm:flex-none inline-flex items-center justify-center px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 disabled:opacity-50"
                 >
-                  <CloseIcon className="h-4 w-4 mr-2" />
-                  Clear All
+                  <DownloadIcon className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+                  <span className="hidden sm:inline">Export</span>
+                  <span className="sm:hidden">Export</span>
                 </button>
-              )}
 
-              {/* Settings */}
-              <button
-                onClick={() => setShowSettings(!showSettings)}
-                className="inline-flex items-center justify-center px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-all duration-200"
-              >
-                <SettingsIcon className="h-5 w-5" />
-              </button>
+                {/* Clear Filters */}
+                {hasActiveFilters && (
+                  <button
+                    onClick={handleClearAllFilters}
+                    className="flex-1 sm:flex-none inline-flex items-center justify-center px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium text-red-600 bg-white border border-red-300 rounded-md hover:bg-red-50"
+                  >
+                    <span className="hidden sm:inline">Clear All ({activeFilterCount})</span>
+                    <span className="sm:hidden">Clear ({activeFilterCount})</span>
+                  </button>
+                )}
+
+                {/* Settings */}
+                <button
+                  onClick={() => setShowSettings(!showSettings)}
+                  className="p-2 text-gray-400 hover:text-gray-500"
+                >
+                  <SettingsIcon className="h-4 w-4 sm:h-5 sm:w-5" />
+                </button>
+              </div>
             </div>
           </div>
         </div>
       </header>
 
-      {/* Enhanced Stats Dashboard */}
-      <div className="bg-white/30 backdrop-blur-sm border-b border-white/20">
-        <div className="max-w-7xl mx-auto px-6 lg:px-8 py-6">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-            {/* Total Records */}
-            <div className="bg-gradient-to-br from-white to-gray-50 rounded-2xl p-6 shadow-lg border border-gray-200/50 hover:shadow-xl hover:scale-105 transition-all duration-300 group">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-600 mb-1">Total Records</p>
-                  <p className="text-3xl font-bold text-gray-900">{data.length.toLocaleString()}</p>
-                </div>
-                <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform">
-                  <DatabaseIcon className="h-6 w-6 text-white" />
-                </div>
-              </div>
+      {/* Stats */}
+      <div className="bg-white border-b border-gray-200">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div className="text-center">
+              <div className="text-lg sm:text-2xl font-bold text-gray-900">{currentDataLength.toLocaleString()}</div>
+              <div className="text-xs sm:text-sm text-gray-500">Total Records</div>
             </div>
-
-            {/* Filtered Records */}
-            <div className="bg-gradient-to-br from-white to-gray-50 rounded-2xl p-6 shadow-lg border border-gray-200/50 hover:shadow-xl hover:scale-105 transition-all duration-300 group">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-600 mb-1">Filtered Records</p>
-                  <p className="text-3xl font-bold text-gray-900">{filteredData.length.toLocaleString()}</p>
-                </div>
-                <div className="w-12 h-12 bg-gradient-to-br from-green-500 to-green-600 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform">
-                  <FilterIcon className="h-6 w-6 text-white" />
-                </div>
-              </div>
+            <div className="text-center">
+              <div className="text-lg sm:text-2xl font-bold text-gray-900">{currentFilteredLength.toLocaleString()}</div>
+              <div className="text-xs sm:text-sm text-gray-500">Filtered Records</div>
             </div>
-
-            {/* Active Filters */}
-            <div className="bg-gradient-to-br from-white to-gray-50 rounded-2xl p-6 shadow-lg border border-gray-200/50 hover:shadow-xl hover:scale-105 transition-all duration-300 group">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-600 mb-1">Active Filters</p>
-                  <p className="text-3xl font-bold text-gray-900">{activeFilterCount}</p>
-                </div>
-                <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform">
-                  <UsersIcon className="h-6 w-6 text-white" />
-                </div>
-              </div>
+            <div className="text-center">
+              <div className="text-lg sm:text-2xl font-bold text-gray-900">{activeFilterCount}</div>
+              <div className="text-xs sm:text-sm text-gray-500">Active Filters</div>
             </div>
-
-            {/* Filter Efficiency */}
-            <div className="bg-gradient-to-br from-white to-gray-50 rounded-2xl p-6 shadow-lg border border-gray-200/50 hover:shadow-xl hover:scale-105 transition-all duration-300 group">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-600 mb-1">Efficiency</p>
-                  <p className="text-3xl font-bold text-gray-900">{filterEfficiency}%</p>
-                </div>
-                <div className="w-12 h-12 bg-gradient-to-br from-orange-500 to-orange-600 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform">
-                  <TrendingUpIcon className="h-6 w-6 text-white" />
-                </div>
-              </div>
+            <div className="text-center">
+              <div className="text-lg sm:text-2xl font-bold text-gray-900">{filterEfficiency}%</div>
+              <div className="text-xs sm:text-sm text-gray-500">Efficiency</div>
             </div>
           </div>
         </div>
       </div>
 
       {/* Main Content */}
-      <div className="max-w-7xl mx-auto px-6 lg:px-8 py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
-          {/* Enhanced Filters Sidebar */}
-          <div className="lg:col-span-1 animate-slide-up">
-            <div className="bg-white/80 backdrop-blur-xl border border-white/20 shadow-2xl rounded-2xl p-6 transform hover:scale-105 hover:shadow-2xl transition-all duration-300">
-              {/* Filter Header */}
-              <div className="mb-6">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center space-x-3">
-                    <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center">
-                      <FilterIcon className="h-4 w-4 text-white" />
-                    </div>
-                    <h2 className="text-xl font-bold text-gray-900">Smart Filters</h2>
-                  </div>
-                  {hasActiveFilters && (
-                    <div className="flex items-center space-x-2">
-                      <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                      <span className="text-sm font-medium text-green-600">{activeFilterCount} Active</span>
-                    </div>
-                  )}
-                </div>
-                
-                {/* Filter Progress */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6">
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 sm:gap-6">
+          {/* Filters Sidebar */}
+          <div className="lg:col-span-1 order-2 lg:order-1">
+            <div className="bg-white border border-gray-200 rounded-lg p-3 sm:p-4">
+              <div className="flex items-center mb-3 sm:mb-4">
+                <FilterIcon className="h-4 w-4 sm:h-5 sm:w-5 text-gray-400 mr-2" />
+                <h2 className="text-base sm:text-lg font-medium text-gray-900">Filters</h2>
                 {hasActiveFilters && (
-                  <div className="bg-gray-100 rounded-full h-2 overflow-hidden">
-                    <div 
-                      className="h-full bg-gradient-to-r from-blue-500 to-indigo-600 transition-all duration-500 ease-out"
-                      style={{ width: `${filterEfficiency}%` }}
-                    ></div>
-                  </div>
+                  <span className="ml-2 inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                    {activeFilterCount}
+                  </span>
                 )}
               </div>
               
-              {/* Filter Controls */}
-              <div className="space-y-6">
+              <div className="space-y-3 sm:space-y-4">
                 {filterableColumns.map((column) => (
-                  <div key={column.key} className="relative">
-                    <div className="absolute -left-3 top-0 bottom-0 w-1 bg-gradient-to-b from-blue-400 to-indigo-600 rounded-full opacity-30"></div>
-                    <FilterDropdown
-                      column={column.key}
-                      label={column.label}
-                    />
-                  </div>
+                  <UltraFastFilterDropdown
+                    key={column.key}
+                    column={column.key}
+                    label={column.label}
+                  />
                 ))}
               </div>
 
               {/* Filter Summary */}
-              <div className="mt-8 pt-6 border-t border-gray-200">
-                <h3 className="text-sm font-bold text-gray-900 mb-4">Filter Summary</h3>
-                <div className="space-y-3">
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-600">Total Records:</span>
-                    <span className="text-sm font-bold text-gray-900">{data.length.toLocaleString()}</span>
+              <div className="mt-4 sm:mt-6 pt-3 sm:pt-4 border-t border-gray-200">
+                <h3 className="text-xs sm:text-sm font-medium text-gray-900 mb-2">Summary</h3>
+                <div className="space-y-1 text-xs sm:text-sm text-gray-600">
+                  <div className="flex justify-between">
+                    <span>Total:</span>
+                    <span>{data.length.toLocaleString()}</span>
                   </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-600">Visible Records:</span>
-                    <span className="text-sm font-bold text-gray-900">{filteredData.length.toLocaleString()}</span>
+                  <div className="flex justify-between">
+                    <span>Visible:</span>
+                    <span>{filteredData.length.toLocaleString()}</span>
                   </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-600">Efficiency:</span>
-                    <span className="text-sm font-bold text-blue-600">{filterEfficiency}%</span>
+                  <div className="flex justify-between">
+                    <span>Efficiency:</span>
+                    <span>{filterEfficiency}%</span>
                   </div>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Enhanced Data Table */}
-          <div className="lg:col-span-3 animate-fade-in">
-            <div className="bg-white/80 backdrop-blur-xl border border-white/20 shadow-2xl rounded-2xl p-6 transform hover:scale-105 hover:shadow-2xl transition-all duration-300">
-              {/* Table Header */}
-              <div className="mb-6">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center space-x-3">
-                    <div className="w-8 h-8 bg-gradient-to-br from-gray-600 to-gray-700 rounded-lg flex items-center justify-center">
-                      <DashboardIcon className="h-4 w-4 text-white" />
-                    </div>
-                    <h2 className="text-xl font-bold text-gray-900">Data Visualization</h2>
-                  </div>
-                  <div className="flex items-center space-x-4">
-                    {/* Virtual Scroll Toggle */}
-                    <label className="flex items-center space-x-2 cursor-pointer group">
-                      <input
-                        type="checkbox"
-                        checked={enableVirtualScroll}
-                        onChange={(e) => setEnableVirtualScroll(e.target.checked)}
-                        className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 focus:ring-2"
-                      />
-                      <span className="text-sm font-medium text-gray-700 group-hover:text-gray-900">
-                        Virtual Scroll
-                      </span>
-                    </label>
-                    
-                    {/* Row Count */}
-                    <div className="flex items-center space-x-2 bg-blue-50 px-3 py-1 rounded-full">
-                      <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                      <span className="text-sm font-medium text-blue-700">
-                        {filteredData.length.toLocaleString()} rows
-                      </span>
-                    </div>
-                  </div>
+          {/* Data Table */}
+          <div className="lg:col-span-3 order-1 lg:order-2">
+            <div className="bg-white border border-gray-200 rounded-lg">
+              {filteredData.length === 0 && hasActiveFilters ? (
+                <div className="text-center py-8 sm:py-12 px-4">
+                  <FilterIcon className="h-8 w-8 sm:h-12 sm:w-12 text-gray-400 mx-auto mb-3 sm:mb-4" />
+                  <h3 className="text-base sm:text-lg font-medium text-gray-900 mb-2">No matching records</h3>
+                  <p className="text-sm sm:text-base text-gray-500 mb-4">Try adjusting your filters to see more data.</p>
+                  <button
+                    onClick={handleClearAllFilters}
+                    className="inline-flex items-center px-3 sm:px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700"
+                  >
+                    <RefreshIcon className="h-4 w-4 mr-2" />
+                    Clear All Filters
+                  </button>
                 </div>
-              </div>
-              
-              {/* Table Content */}
-              <div className="relative">
-                {filteredData.length === 0 && hasActiveFilters ? (
-                  <div className="text-center py-20">
-                    <div className="w-20 h-20 mx-auto mb-6 bg-gradient-to-br from-gray-100 to-gray-200 rounded-full flex items-center justify-center">
-                      <FilterIcon className="h-10 w-10 text-gray-400" />
-                    </div>
-                    <h3 className="text-xl font-bold text-gray-900 mb-2">No matching records found</h3>
-                    <p className="text-gray-600 mb-6">Try adjusting your filters to see more data.</p>
-                    <button
-                      onClick={handleClearAllFilters}
-                      className="inline-flex items-center justify-center px-6 py-3 text-sm font-semibold text-white bg-gradient-to-r from-blue-600 to-indigo-600 rounded-xl shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-200"
-                    >
-                      <RefreshIcon className="h-4 w-4 mr-2" />
-                      Clear All Filters
-                    </button>
-                  </div>
-                ) : (
-                  <DataTable
-                    data={filteredData}
-                    columns={columns}
-                    enableVirtualScroll={enableVirtualScroll}
-                    virtualScrollHeight={600}
-                  />
-                )}
-              </div>
+              ) : (
+                <DataTable
+                  data={filteredData}
+                  columns={columns}
+                  enableVirtualScroll={enableVirtualScroll}
+                  virtualScrollHeight={600}
+                />
+              )}
             </div>
           </div>
         </div>
       </div>
 
-      {/* Enhanced Settings Modal */}
+      {/* Settings Modal */}
       {showSettings && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white/80 backdrop-blur-xl border border-white/20 shadow-2xl rounded-3xl max-w-md w-full p-8 animate-fade-in">
-            <div className="flex items-center justify-between mb-8">
-              <div className="flex items-center space-x-3">
-                <div className="w-8 h-8 bg-gradient-to-br from-gray-600 to-gray-700 rounded-lg flex items-center justify-center">
-                  <SettingsIcon className="h-4 w-4 text-white" />
-                </div>
-                <h3 className="text-xl font-bold text-gray-900">Dashboard Settings</h3>
-              </div>
+        <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg max-w-md w-full p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-medium text-gray-900">Settings</h3>
               <button
                 onClick={() => setShowSettings(false)}
-                className="inline-flex items-center justify-center px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-all duration-200 p-2"
+                className="text-gray-400 hover:text-gray-500"
               >
-                <CloseIcon className="h-5 w-5" />
+                <span className="sr-only">Close</span>
+                <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
               </button>
             </div>
             
-            <div className="space-y-6">
+            <div className="space-y-4">
               <div>
-                <label className="block text-sm font-bold text-gray-900 mb-4">
-                  Performance Mode
+                <label className="text-sm font-medium text-gray-900 block mb-2">
+                  Display Mode
                 </label>
-                <div className="space-y-3">
-                  <label className="flex items-center p-3 bg-gray-50 rounded-xl cursor-pointer hover:bg-gray-100 transition-colors">
+                <div className="space-y-2">
+                  <label className="flex items-center">
                     <input
                       type="radio"
-                      name="performance"
-                      checked={!enableVirtualScroll}
-                      onChange={() => setEnableVirtualScroll(false)}
-                      className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 focus:ring-blue-500 focus:ring-2"
+                      name="display"
+                      checked={!enableVirtualScroll && !useChunkedDisplay}
+                      onChange={() => {
+                        setEnableVirtualScroll(false);
+                        setUseChunkedDisplay(false);
+                      }}
+                      className="mr-2"
                     />
-                    <div className="ml-3">
-                      <span className="text-sm font-medium text-gray-900">Standard Mode</span>
-                      <p className="text-xs text-gray-600">Better user experience, pagination-based</p>
-                    </div>
+                    <span className="text-sm text-gray-700">Standard</span>
                   </label>
-                  <label className="flex items-center p-3 bg-gray-50 rounded-xl cursor-pointer hover:bg-gray-100 transition-colors">
+                  <label className="flex items-center">
                     <input
                       type="radio"
-                      name="performance"
+                      name="display"
                       checked={enableVirtualScroll}
-                      onChange={() => setEnableVirtualScroll(true)}
-                      className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 focus:ring-blue-500 focus:ring-2"
+                      onChange={() => {
+                        setEnableVirtualScroll(true);
+                        setUseChunkedDisplay(false);
+                      }}
+                      className="mr-2"
                     />
-                    <div className="ml-3">
-                      <span className="text-sm font-medium text-gray-900">Virtual Scroll</span>
-                      <p className="text-xs text-gray-600">Better performance for large datasets</p>
-                    </div>
+                    <span className="text-sm text-gray-700">Virtual Scroll</span>
+                  </label>
+                  <label className="flex items-center">
+                    <input
+                      type="radio"
+                      name="display"
+                      checked={useChunkedDisplay}
+                      onChange={() => {
+                        setEnableVirtualScroll(false);
+                        setUseChunkedDisplay(true);
+                      }}
+                      className="mr-2"
+                      disabled
+                    />
+                    <span className="text-sm text-gray-400">Chunked Display (Disabled)</span>
                   </label>
                 </div>
               </div>
               
-              <div className="pt-4 border-t border-gray-200">
+              <div className="pt-4">
                 <button
                   onClick={() => setShowSettings(false)}
-                  className="inline-flex items-center justify-center px-6 py-3 text-sm font-semibold text-white bg-gradient-to-r from-blue-600 to-indigo-600 rounded-xl shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-200 w-full"
+                  className="w-full inline-flex justify-center items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700"
                 >
                   Save Settings
                 </button>
