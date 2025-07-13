@@ -113,14 +113,7 @@ export const MultiSelectFilter: React.FC<MultiSelectFilterProps> = ({
     onSelectionChange(newSelection);
   };
 
-  const handleSelectAll = () => {
-    const allValues = filteredOptions.map(option => option.value);
-    onSelectionChange(allValues);
-  };
 
-  const handleClearAll = () => {
-    onSelectionChange([]);
-  };
 
   const handleClearSearch = () => {
     setSearchTerm('');
@@ -192,21 +185,7 @@ export const MultiSelectFilter: React.FC<MultiSelectFilterProps> = ({
             </div>
           </div>
 
-          {/* Select All / Clear All Buttons */}
-          <div className="flex border-b border-gray-200">
-            <button
-              onClick={handleSelectAll}
-              className="flex-1 px-3 py-2 text-sm text-blue-600 hover:bg-blue-50 border-r border-gray-200"
-            >
-              Select All
-            </button>
-            <button
-              onClick={handleClearAll}
-              className="flex-1 px-3 py-2 text-sm text-red-600 hover:bg-red-50"
-            >
-              Clear All
-            </button>
-          </div>
+
 
           {/* Options List with Virtual Scrolling */}
           <div

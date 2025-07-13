@@ -88,7 +88,7 @@ export const Dashboard: React.FC = () => {
     setLoadingMessage('Initializing data generation...');
     setEstimatedTime(undefined);
     
-    const sizes = { small: 10000, medium: 100000, large: 500000 };
+    const sizes = { small: 10000, medium: 10000, large: 50000 };
     const targetSize = sizes[size];
     
     // Always use standard DataTable with horizontal scrolling for all dataset sizes
@@ -120,7 +120,7 @@ export const Dashboard: React.FC = () => {
           if (newProgress < 25) {
             setLoadingMessage('Initializing data generation engine...');
           } else if (newProgress < 45) {
-            setLoadingMessage('Generating 500,000 data records...');
+            setLoadingMessage('Generating 50,000 data records...');
           } else if (newProgress < 65) {
             setLoadingMessage('Processing data structures and indexes...');
           } else if (newProgress < 85) {
