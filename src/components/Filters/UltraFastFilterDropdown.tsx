@@ -79,7 +79,7 @@ export const UltraFastFilterDropdown: React.FC<UltraFastFilterDropdownProps> = R
     try {
       if (isIdOrNumber) {
         // Show ALL ID/Number values
-        let options = allOptions;
+        const options = [...allOptions];
         
         // Always include selected values even if not in filtered results
         if (selectedValues.length > 0) {

@@ -258,7 +258,7 @@ export const ChunkedDataProvider: React.FC<{ children: ReactNode }> = ({ childre
       });
       loadingChunks.current.delete(chunkIndex);
     }
-  }, [state.dataGenerator]);
+  }, [state.dataGenerator, state.filterManager]);
 
   const loadVisibleChunks = useCallback(async (startIndex: number, endIndex: number) => {
     if (!state.dataGenerator) return;
